@@ -59,3 +59,7 @@ target_link_libraries(${PROJECT_NAME} assimp glfw
                       BulletDynamics BulletCollision LinearMath)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
+
+if (MSVC)
+    set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
+endif()
