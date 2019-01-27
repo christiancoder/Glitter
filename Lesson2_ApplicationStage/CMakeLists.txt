@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 project(Lesson2)
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 
 option(GLFW_BUILD_DOCS OFF)
 option(GLFW_BUILD_EXAMPLES OFF)
