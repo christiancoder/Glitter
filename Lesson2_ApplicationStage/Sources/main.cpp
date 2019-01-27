@@ -4,7 +4,10 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <iostream>
+#include <memory>
+#include <vector>
 
 //=============================================================================
 
@@ -36,22 +39,96 @@ const char* fragmentShaderSource = "#version 330 core\n"
 
 struct ShaderProgram
 {
-    GLuint program;
+    ShaderProgram( GLuint const program ):
+        mProgram( program )
+    {
+    }
+
+    virtual ~ShaderProgram()
+    {
+        if (mProgram)
+        {
+            glDeleteProgram( mProgram );
+        }
+    }
+
+    virtual void Bind()
+    {
+        if (mProgram)
+        {
+            glUseProgram( mProgram );
+        }
+    }
+
+    GLuint mProgram;
 };
+
+//=============================================================================
 
 struct Mesh
 {
-    ShaderProgram* program;
-    GLuint vertexArrayObj;
-    GLuint vertexBufferObj;
-    GLenum primitiveType;
-    GLsizei numVertices;
+    Mesh( const std::shared_ptr<ShaderProgram>& shaderProgram, GLuint const vertexArrayObj, GLuint const vertexBufferObj, GLenum const primitiveType, GLsizei const numVertices ):
+        mShaderProgram( shaderProgram ),
+        mVertexArrayObj( vertexArrayObj ),
+        mVertexBufferObj( vertexBufferObj ),
+        mPrimitiveType( primitiveType ),
+        mNumVertices( numVertices )
+    {
+    }
+
+    virtual ~Mesh()
+    {
+        if (mVertexArrayObj)
+        {
+            glDeleteVertexArrays( 1, &mVertexArrayObj );
+            mVertexArrayObj = 0;
+        }
+        if (mVertexBufferObj)
+        {
+            glDeleteBuffers( 1, &mVertexBufferObj );
+            mVertexBufferObj = 0;
+        }
+    }
+
+    virtual void Render( const glm::mat4& transform )
+    {
+        mShaderProgram->Bind();
+        glBindVertexArray( mVertexArrayObj );
+        glDrawArrays( mPrimitiveType, 0, mNumVertices );
+    }
+
+    std::shared_ptr<ShaderProgram> mShaderProgram;
+    GLuint mVertexArrayObj;
+    GLuint mVertexBufferObj;
+    GLenum mPrimitiveType;
+    GLsizei mNumVertices;
 };
+
+//=============================================================================
 
 struct Object
 {
-    Mesh* mesh;
-    glm::mat4x3 worldSpaceTransform;
+    Object( const std::shared_ptr<Mesh>& mesh, const glm::mat4& transform ):
+        mMesh( mesh ),
+        mTransform( transform )
+    {
+    }
+    
+    virtual void Update( float const deltaTime )
+    {
+        // Do something here.
+    }
+
+    virtual void Render()
+    {
+        if (mMesh != nullptr)
+        {
+            mMesh->Render( mTransform );
+        }
+    }
+
+    std::shared_ptr<Mesh> mMesh;
+    glm::mat4 mTransform;
 };
 
 //=============================================================================
@@ -115,7 +192,7 @@ GLFWwindow* InitGL()
 
 //=============================================================================
 
-bool BuildShaderProgram( ShaderProgram& shaderProgram )
+std::shared_ptr<ShaderProgram> BuildShaderProgram()
 {
     // build and compile our shader program
     // ------------------------------------
@@ -133,7 +210,7 @@ bool BuildShaderProgram( ShaderProgram& shaderProgram )
         glGetShaderInfoLog(vertexShader, 512, nullptr, infoLog);
         std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
         glDeleteShader(vertexShader);
-        return false;
+        return nullptr;
     }
 
     // fragment shader
@@ -148,37 +225,36 @@ bool BuildShaderProgram( ShaderProgram& shaderProgram )
         std::cout << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
-        return false;
+        return nullptr;
     }
 
     // link shaders
-    shaderProgram.program = glCreateProgram();
-    glAttachShader(shaderProgram.program, vertexShader);
-    glAttachShader(shaderProgram.program, fragmentShader);
-    glLinkProgram(shaderProgram.program);
+    GLuint const program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
     // check for linking errors
-    glGetProgramiv(shaderProgram.program, GL_LINK_STATUS, &success);
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
     if (!success)
     {
-        glGetProgramInfoLog(shaderProgram.program, 512, nullptr, infoLog);
+        glGetProgramInfoLog(program, 512, nullptr, infoLog);
         std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-        shaderProgram.program = 0;
-        return false;
+        return nullptr;
     }
 
-    return true;
+    return std::shared_ptr<ShaderProgram>( new ShaderProgram( program ) );
 }
 
 //=============================================================================
 
-bool BuildPropMesh( Mesh& mesh )
+std::shared_ptr<Mesh> BuildPropMesh( const std::shared_ptr<ShaderProgram>& shaderProgram )
 {
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
-    mesh.primitiveType = GL_TRIANGLES;
-    mesh.numVertices = 3;
+    GLenum const primitiveType = GL_TRIANGLES;
+    GLsizei const numVertices = 3;
     float vertices[] = 
     {
         // positions         // colors
@@ -187,15 +263,17 @@ bool BuildPropMesh( Mesh& mesh )
          0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f   // top 
     };
 
-    glGenVertexArrays(1, &mesh.vertexArrayObj);
-    glGenBuffers(1, &mesh.vertexBufferObj);
+    GLuint vertexArrayObj = 0;
+    GLuint vertexBufferObj = 0;
+    glGenVertexArrays(1, &vertexArrayObj);
+    glGenBuffers(1, &vertexBufferObj);
 
     // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
-    glBindVertexArray(mesh.vertexArrayObj);
+    glBindVertexArray(vertexArrayObj);
 
     // Alloc vertex buffer.
     GLsizeiptr const bufferSize = sizeof(vertices);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vertexBufferObj);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObj);
     glBufferData(GL_ARRAY_BUFFER, bufferSize, vertices, GL_STATIC_DRAW);
 
     // position attribute
@@ -211,12 +289,12 @@ bool BuildPropMesh( Mesh& mesh )
 
     glBindVertexArray(0);
 
-    return true;
+    return std::shared_ptr<Mesh>( new Mesh( shaderProgram, vertexArrayObj, vertexBufferObj, primitiveType, numVertices ) );
 }
 
 //=============================================================================
 
-void Update( GLFWwindow* const window, float const deltaTime )
+void Update( std::vector<std::shared_ptr<Object>>& objects, float const deltaTime, GLFWwindow* const window )
 {
     // Process Input, AI, Physics, Collision Detection / Resolution, etc.
     // pump events
@@ -230,15 +308,15 @@ void Update( GLFWwindow* const window, float const deltaTime )
 
 //=============================================================================
 
-void Render( GLFWwindow* const window )
+void Render( std::vector<std::shared_ptr<Object>>& objects, GLFWwindow* const window )
 {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // render the triangle
-    glUseProgram(shaderProgram.program);
-    glBindVertexArray(mesh.vertexArrayObj);
-    glDrawArrays(mesh.primitiveType, 0, mesh.numVertices);
+    for (const auto& obj : objects)
+    {
+        obj->Render();
+    }
 
     // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
     // -------------------------------------------------------------------------------
@@ -257,25 +335,22 @@ int main()
     }
 
     // Create shader program.
-    ShaderProgram shaderProgram;
-    if (!BuildShaderProgram(shaderProgram))
+    std::shared_ptr<ShaderProgram> shaderProgram = BuildShaderProgram();
+    if (shaderProgram == nullptr)
     {
         return -1;
     }
-
-    // Create floor mesh.
-    /*GLuint const floor = BuildFloorMesh();
-    if (floor == 0)
-    {
-        return -1;
-    }*/
 
     // Create prop mesh (Triangle).
-    Mesh mesh;
-    if (!BuildPropMesh(mesh))
+    std::shared_ptr<Mesh> mesh = BuildPropMesh( shaderProgram );
+    if (mesh == nullptr)
     {
         return -1;
     }
+
+    // Create prop object.
+    std::vector<std::shared_ptr<Object>> objects;
+    objects.push_back( std::shared_ptr<Object>( new Object( mesh, glm::mat4(1.0f) ) ) );
 
     // render loop
     // -----------
@@ -285,19 +360,11 @@ int main()
         // -----
 
         // update
-        Update(window,deltaTime);
+        Update(objects, 0.0f, window);
 
         // Render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
-        Render(window, );
+        Render(objects, window);
     }
-
-    // de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
-    DeleteMesh(mesh)
-
-
-
-
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
