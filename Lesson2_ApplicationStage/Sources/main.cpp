@@ -4,7 +4,7 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
+#include <glm/mat4x4.hpp>
 #include <iostream>
 #include <memory>
 #include <vector>
