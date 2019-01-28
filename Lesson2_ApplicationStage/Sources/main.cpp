@@ -4,10 +4,13 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
-#include <iostream>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <memory>
 #include <vector>
+#include <iostream>
 
 //=============================================================================
 
@@ -18,12 +21,15 @@ const unsigned int SCR_HEIGHT = 600;
 //=============================================================================
 
 const char* vertexShaderSource ="#version 330 core\n"
+    "uniform mat4 model;\n"
+    "uniform mat4 view;\n"
+    "uniform mat4 projection;\n"
     "layout (location = 0) in vec3 aPos;\n"
     "layout (location = 1) in vec3 aColor;\n"
     "out vec3 ourColor;\n"
     "void main()\n"
     "{\n"
-    "   gl_Position = vec4(aPos, 1.0);\n"
+    "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
     "   ourColor = aColor;\n"
     "}\0";
 
@@ -39,8 +45,11 @@ const char* fragmentShaderSource = "#version 330 core\n"
 
 struct ShaderProgram
 {
-    ShaderProgram( GLuint const program ):
-        mProgram( program )
+    ShaderProgram( GLuint const program, GLint const modelMatrixLoc, GLint const viewMatrixLoc, GLint const projectionMatrixLoc ):
+        mProgram( program ),
+        mModelMatrixLoc( modelMatrixLoc ),
+        mViewMatrixLoc( viewMatrixLoc ),
+        mProjectionMatrixLoc( projectionMatrixLoc )
     {
     }
 
@@ -52,15 +61,21 @@ struct ShaderProgram
         }
     }
 
-    virtual void Bind()
+    virtual void Bind( const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection )
     {
         if (mProgram)
         {
             glUseProgram( mProgram );
+            glUniformMatrix4fv( mModelMatrixLoc, 1, GL_FALSE, glm::value_ptr( model ) );
+            glUniformMatrix4fv( mViewMatrixLoc, 1, GL_FALSE, glm::value_ptr( view ) );
+            glUniformMatrix4fv( mProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr( projection ) );
         }
     }
 
     GLuint mProgram;
+    GLint mModelMatrixLoc;
+    GLint mViewMatrixLoc;
+    GLint mProjectionMatrixLoc;
 };
 
 //=============================================================================
@@ -90,11 +105,14 @@ struct Mesh
         }
     }
 
-    virtual void Render( const glm::mat4& transform )
+    virtual void Render( const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection )
     {
-        mShaderProgram->Bind();
-        glBindVertexArray( mVertexArrayObj );
-        glDrawArrays( mPrimitiveType, 0, mNumVertices );
+        mShaderProgram->Bind( model, view, projection );
+        if (mVertexArrayObj && mNumVertices > 0)
+        {
+            glBindVertexArray( mVertexArrayObj );
+            glDrawArrays( mPrimitiveType, 0, mNumVertices );
+        }
     }
 
     std::shared_ptr<ShaderProgram> mShaderProgram;
@@ -110,41 +128,49 @@ struct Object
 {
     Object( const std::shared_ptr<Mesh>& mesh, const glm::mat4& transform ):
         mMesh( mesh ),
-        mTransform( transform )
+        mTransform( transform ),
+		mRot( 0.0f )
     {
     }
     
     virtual void Update( float const deltaTime )
     {
-        // Do something here.
+        // Rotate object.
+        float const rotationsPerSecond = 0.5f;
+        mRot += ((360.0f * rotationsPerSecond) * deltaTime);
+        mRot = fmodf( mRot, 360.0f );
+        mTransform = glm::rotate( glm::mat4( 1.0f ), glm::radians( mRot ), glm::vec3( 0.0f, 0.0f, 1.0f ) );
     }
 
-    virtual void Render()
+    virtual void Render( const glm::mat4& view, const glm::mat4& projection )
     {
         if (mMesh != nullptr)
         {
-            mMesh->Render( mTransform );
+            mMesh->Render( mTransform, view, projection );
         }
     }
 
     std::shared_ptr<Mesh> mMesh;
     glm::mat4 mTransform;
+    float mRot;
 };
 
 //=============================================================================
 
-// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 void ProcessInput(GLFWwindow* const window)
 {
+    // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    {
         glfwSetWindowShouldClose(window, true);
+    }
 }
 
 //=============================================================================
 
-// glfw: whenever the window size changed (by OS or user resize) this callback function executes
 void FramebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
+    // glfw: whenever the window size changed (by OS or user resize) this callback function executes
     // make sure the viewport matches the new window dimensions; note that width and 
     // height will be significantly larger than specified on retina displays.
     (void)window;
@@ -178,7 +204,7 @@ GLFWwindow* InitGL()
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 
-    // glad: load all OpenGL function pointers
+    // glad: load all OpenGL function pointers (extensions)
     // ---------------------------------------
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -244,7 +270,12 @@ std::shared_ptr<ShaderProgram> BuildShaderProgram()
         return nullptr;
     }
 
-    return std::shared_ptr<ShaderProgram>( new ShaderProgram( program ) );
+    // get uniform parameter locations
+    GLint const modelMatrixLoc = glGetUniformLocation( program, "model" );
+    GLint const viewMatrixLoc = glGetUniformLocation( program, "view" );
+    GLint const projectionMatrixLoc = glGetUniformLocation( program, "projection" );
+
+    return std::shared_ptr<ShaderProgram>( new ShaderProgram( program, modelMatrixLoc, viewMatrixLoc, projectionMatrixLoc ) );
 }
 
 //=============================================================================
@@ -263,6 +294,7 @@ std::shared_ptr<Mesh> BuildPropMesh( const std::shared_ptr<ShaderProgram>& shade
          0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f   // top 
     };
 
+    // generate vertex buffer and vertex array objects
     GLuint vertexArrayObj = 0;
     GLuint vertexBufferObj = 0;
     glGenVertexArrays(1, &vertexArrayObj);
@@ -296,29 +328,52 @@ std::shared_ptr<Mesh> BuildPropMesh( const std::shared_ptr<ShaderProgram>& shade
 
 void Update( std::vector<std::shared_ptr<Object>>& objects, float const deltaTime, GLFWwindow* const window )
 {
-    // Process Input, AI, Physics, Collision Detection / Resolution, etc.
+    // process Input, AI, Physics, Collision Detection / Resolution, etc.
+    
     // pump events
     glfwPollEvents();
 
     // process input
-    ProcessInput(window);
+    ProcessInput( window );
 
-    // update objects ()
+    // update objects
+    for (const auto& obj : objects)
+    {
+        obj->Update( deltaTime );
+    }
 }
 
 //=============================================================================
 
 void Render( std::vector<std::shared_ptr<Object>>& objects, GLFWwindow* const window )
 {
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    // place camera back 2 units from 0,0,0 along z-axis, we are using OpenGL's
+    // default coordinate system where -z is into the screen
+    glm::mat4 view = glm::mat4( 1.0f );
+    view = glm::translate( view, glm::vec3( 0.0f, 0.0f, 2.0f ) ); 
+    // use inverse of camera matrix to move objects from worldspace into viewspace.
+    view = glm::inverse( view );
+
+    // get window size for projection matrix
+    int wd;
+    int ht;
+    glfwGetWindowSize( window, &wd, &ht );
+
+    // build projection matrix wd / ht aspect ratio with 45 degree field of view
+    glm::mat4 projection( 1.0f );
+    projection = glm::perspective( glm::radians( 45.0f ), (float)wd / (float)ht, 0.1f, 100.0f );
+
+    // render objects
     for (const auto& obj : objects)
     {
-        obj->Render();
+        obj->Render( view, projection );
     }
 
-    // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
+    // glfw: swap buffers
     // -------------------------------------------------------------------------------
     glfwSwapBuffers(window);
 }
@@ -327,48 +382,48 @@ void Render( std::vector<std::shared_ptr<Object>>& objects, GLFWwindow* const wi
 
 int main()
 {
-    // Initialize OpenGL (3.3 Core Profile).
-    GLFWwindow* const window = InitGL();
+    // initialize OpenGL (3.3 Core Profile)
+    /*GLFWwindow* const window = InitGL();
     if (window == nullptr)
     {
         return -1;
-    }
+    }*/
 
-    // Create shader program.
-    std::shared_ptr<ShaderProgram> shaderProgram = BuildShaderProgram();
+    // create shader program
+    /*std::shared_ptr<ShaderProgram> shaderProgram = BuildShaderProgram();
     if (shaderProgram == nullptr)
     {
         return -1;
-    }
+    }*/
 
-    // Create prop mesh (Triangle).
-    std::shared_ptr<Mesh> mesh = BuildPropMesh( shaderProgram );
+    // create prop mesh (Triangle)
+    /*std::shared_ptr<Mesh> mesh = BuildPropMesh( shaderProgram );
     if (mesh == nullptr)
     {
         return -1;
-    }
+    }*/
 
-    // Create prop object.
+    // create prop object
     std::vector<std::shared_ptr<Object>> objects;
-    objects.push_back( std::shared_ptr<Object>( new Object( mesh, glm::mat4(1.0f) ) ) );
+    //objects.push_back( std::shared_ptr<Object>( new Object( mesh, glm::mat4(1.0f) ) ) );
 
-    // render loop
+    // game loop
     // -----------
+    /*double t0 = glfwGetTime();
     while (!glfwWindowShouldClose(window))
     {
-        // input
-        // -----
-
         // update
-        Update(objects, 0.0f, window);
+        double const t1 = glfwGetTime();
+        Update(objects, (float)(t1 - t0), window);
+        t0 = t1;
 
-        // Render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
+        // render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
         Render(objects, window);
-    }
+    }*/
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
-    glfwTerminate();
+    //glfwTerminate();
     return 0;
 }
 
