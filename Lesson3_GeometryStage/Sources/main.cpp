@@ -5,13 +5,11 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
-//#include <glm/mat4x4.hpp>
-//#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <memory>
 #include <vector>
 #include <iostream>
-
+#include "teapot.h"
 //=============================================================================
 
 // settings
@@ -20,54 +18,104 @@ const unsigned int SCR_HEIGHT = 600;
 
 //=============================================================================
 
+//    "   vec3 wsNormal = itModel * aNormal;\n"
+//    "   outColor = max( dot( wsNormal, wsCameraDir ), 0.0 ) * color;\n"
+
 const char* vertexShaderSource ="#version 330 core\n"
     "uniform mat4 model;\n"
+    "uniform mat3 itModel;\n"
     "uniform mat4 view;\n"
     "uniform mat4 projection;\n"
+    "uniform vec3 color;\n"
+    "uniform vec3 wsCameraDir;\n"
     "layout (location = 0) in vec3 aPos;\n"
-    "layout (location = 1) in vec3 aColor;\n"
-    "out vec3 ourColor;\n"
+    "layout (location = 1) in vec3 aNormal;\n"
+    "out vec3 outColor;\n"
     "void main()\n"
     "{\n"
-    "   gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
-    "   ourColor = aColor;\n"
-    "}\0";
+    "   gl_Position = projection * view * model * vec4( aPos, 1.0 );\n"
+    "   outColor = color;\n"
+    "}\n"
+    "\0";
 
 const char* fragmentShaderSource = "#version 330 core\n"
     "out vec4 FragColor;\n"
-    "in vec3 ourColor;\n"
+    "in vec3 outColor;\n"
     "void main()\n"
     "{\n"
-    "   FragColor = vec4(ourColor, 1.0f);\n"
-    "}\n\0";
+    "   FragColor = vec4(outColor, 1.0f);\n"
+    "}\n"
+    "\0";
+
+
+//=============================================================================
+
+static uint32_t const gNumColors = 30;
+static glm::vec3 gColors[gNumColors] =
+{
+    glm::vec3( 0.200f, 0.400f, 0.600f ),
+    glm::vec3( 0.600f, 0.800f, 1.000f ),
+    glm::vec3( 0.600f, 0.600f, 0.200f ),
+    glm::vec3( 0.400f, 0.400f, 0.600f ),
+    glm::vec3( 0.800f, 0.600f, 0.200f ),
+    glm::vec3( 0.000f, 0.400f, 0.400f ),
+    glm::vec3( 0.200f, 0.600f, 1.000f ),
+    glm::vec3( 0.600f, 0.200f, 0.000f ),
+    glm::vec3( 0.800f, 0.800f, 0.600f ),
+    glm::vec3( 0.400f, 0.400f, 0.400f ),
+    glm::vec3( 1.000f, 0.800f, 0.400f ),
+    glm::vec3( 0.400f, 0.600f, 0.800f ),
+    glm::vec3( 0.400f, 0.200f, 0.400f ),
+    glm::vec3( 0.600f, 0.600f, 0.800f ),
+    glm::vec3( 0.800f, 0.800f, 0.800f ),
+    glm::vec3( 0.400f, 0.600f, 0.600f ),
+    glm::vec3( 0.800f, 0.800f, 0.400f ),
+    glm::vec3( 0.800f, 0.400f, 0.000f ),
+    glm::vec3( 0.600f, 0.600f, 1.000f ),
+    glm::vec3( 0.000f, 0.400f, 0.800f ),
+    glm::vec3( 0.600f, 0.800f, 0.800f ),
+    glm::vec3( 0.600f, 0.600f, 0.600f ),
+    glm::vec3( 1.000f, 0.800f, 0.000f ),
+    glm::vec3( 0.000f, 0.600f, 0.600f ),
+    glm::vec3( 0.600f, 0.800f, 0.200f ),
+    glm::vec3( 1.000f, 0.600f, 0.000f ),
+    glm::vec3( 0.600f, 0.600f, 0.400f ),
+    glm::vec3( 0.400f, 0.800f, 0.800f ),
+    glm::vec3( 0.200f, 0.600f, 0.400f ),
+    glm::vec3( 0.800f, 0.800f, 0.200f ),
+};
 
 //=============================================================================
 
 struct ShaderProgram
 {
-    ShaderProgram( GLuint const program, GLint const modelMatrixLoc, GLint const viewMatrixLoc, GLint const projectionMatrixLoc );
+    ShaderProgram( GLuint const program, GLint const modelMatrixLoc, GLint const itModelMatrixLoc, GLint const viewMatrixLoc, GLint const projectionMatrixLoc, GLint const mColorLoc, GLint const mCameraDirLoc );
     virtual ~ShaderProgram();
-    void Bind( const glm::mat4& model );
+    void Bind( const glm::mat4& model, const glm::vec3& color );
 
     GLuint mProgram;
     GLint mModelMatrixLoc;
+    GLint mITModelMatrixLoc;
     GLint mViewMatrixLoc;
     GLint mProjectionMatrixLoc;
+    GLint mColorLoc;
+    GLint mCameraDirLoc;
 };
 
 //=============================================================================
 
 struct Mesh
 {
-    Mesh( const std::shared_ptr<ShaderProgram>& shaderProgram, GLuint const vertexArrayObj, GLuint const vertexBufferObj, GLenum const primitiveType, GLsizei const numVertices );
+    Mesh( const std::shared_ptr<ShaderProgram>& shaderProgram, GLuint const vertexArrayObj, GLuint const vertexBufferObj, GLuint const indexBufferObj, GLenum const primitiveType, GLsizei const numIndices );
     virtual ~Mesh();
-    void Render( const glm::mat4& model );
+    void Render( const glm::mat4& model, const glm::vec3& color );
 
     std::shared_ptr<ShaderProgram> mShaderProgram;
     GLuint mVertexArrayObj;
     GLuint mVertexBufferObj;
+    GLuint mIndexBufferObj;
     GLenum mPrimitiveType;
-    GLsizei mNumVertices;
+    GLsizei mNumIndices;
 };
 
 //=============================================================================
@@ -91,6 +139,7 @@ struct Prop : public Object
 
     std::shared_ptr<Mesh> mMesh;
     glm::mat4 mTransform;
+    glm::vec3 mColor;
     glm::vec2 mPosXZ;
     glm::vec2 mVelocityXZ;
 };
@@ -101,11 +150,10 @@ struct Floor : public Object
 {
     Floor( const std::shared_ptr<Mesh>& mesh );
     virtual ~Floor() = default;
-    virtual void Update( float const deltaTime ) override;
+    virtual void Update( float const deltaTime ) {}
     virtual void Render() override;
 
     std::shared_ptr<Mesh> mMesh;
-    glm::mat4 mTransform;
 };
 
 //=============================================================================
@@ -135,6 +183,7 @@ struct GameState
 
     GLFWwindow* mWindow;
     glm::mat4 mViewMatrix;
+    glm::mat4 mCameraMatrix;
     glm::mat4 mProjectionMatrix;
     std::vector<std::shared_ptr<Object>> mObjects;
     uint32_t mButtonMask;
@@ -148,11 +197,14 @@ static std::shared_ptr<GameState> gGameState;
 
 //=============================================================================
 
-ShaderProgram::ShaderProgram( GLuint const program, GLint const modelMatrixLoc, GLint const viewMatrixLoc, GLint const projectionMatrixLoc ):
+ShaderProgram::ShaderProgram( GLuint const program, GLint const modelMatrixLoc, GLint const itModelMatrixLoc, GLint const viewMatrixLoc, GLint const projectionMatrixLoc, GLint const colorLoc, GLint const cameraDirLoc ):
     mProgram( program ),
     mModelMatrixLoc( modelMatrixLoc ),
+    mITModelMatrixLoc( itModelMatrixLoc ),
     mViewMatrixLoc( viewMatrixLoc ),
-    mProjectionMatrixLoc( projectionMatrixLoc )
+    mProjectionMatrixLoc( projectionMatrixLoc ),
+    mColorLoc( colorLoc ),
+    mCameraDirLoc( cameraDirLoc )
 {
 }
 
@@ -168,25 +220,33 @@ ShaderProgram::~ShaderProgram()
 
 //=============================================================================
 
-void ShaderProgram::Bind( const glm::mat4& modelMatrix )
+void ShaderProgram::Bind( const glm::mat4& modelMatrix, const glm::vec3& color )
 {
     if (mProgram)
     {
+        glm::mat3 itModelMatrix( 1.0f );
+        itModelMatrix[0] = normalize( glm::vec3( modelMatrix[0] ) );
+        itModelMatrix[1] = normalize( glm::vec3( modelMatrix[1] ) );
+        itModelMatrix[2] = normalize( glm::vec3( modelMatrix[2] ) );
         glUseProgram( mProgram );
         glUniformMatrix4fv( mModelMatrixLoc, 1, GL_FALSE, glm::value_ptr( modelMatrix ) );
+        glUniformMatrix3fv( mITModelMatrixLoc, 1, GL_FALSE, glm::value_ptr( itModelMatrix ) );
         glUniformMatrix4fv( mViewMatrixLoc, 1, GL_FALSE, glm::value_ptr( gGameState->mViewMatrix ) );
         glUniformMatrix4fv( mProjectionMatrixLoc, 1, GL_FALSE, glm::value_ptr( gGameState->mProjectionMatrix ) );
+        glUniform3f( mColorLoc, color.x, color.y, color.z );
+        glUniform3f( mCameraDirLoc, gGameState->mCameraMatrix[2].x, gGameState->mCameraMatrix[2].y, gGameState->mCameraMatrix[2].z );
     }
 }
 
 //=============================================================================
 
-Mesh::Mesh( const std::shared_ptr<ShaderProgram>& shaderProgram, GLuint const vertexArrayObj, GLuint const vertexBufferObj, GLenum const primitiveType, GLsizei const numVertices ):
+Mesh::Mesh( const std::shared_ptr<ShaderProgram>& shaderProgram, GLuint const vertexArrayObj, GLuint const vertexBufferObj, GLuint const indexBufferObj, GLenum const primitiveType, GLsizei const numIndices ):
     mShaderProgram( shaderProgram ),
     mVertexArrayObj( vertexArrayObj ),
     mVertexBufferObj( vertexBufferObj ),
+    mIndexBufferObj( indexBufferObj ),
     mPrimitiveType( primitiveType ),
-    mNumVertices( numVertices )
+    mNumIndices( numIndices )
 {
 }
 
@@ -204,17 +264,22 @@ Mesh::~Mesh()
         glDeleteBuffers( 1, &mVertexBufferObj );
         mVertexBufferObj = 0;
     }
+    if (mIndexBufferObj)
+    {
+        glDeleteBuffers( 1, &mIndexBufferObj );
+        mIndexBufferObj = 0;
+    }
 }
 
 //=============================================================================
 
-void Mesh::Render( const glm::mat4& modelMatrix )
+void Mesh::Render( const glm::mat4& modelMatrix, const glm::vec3& color )
 {
-    if (mVertexArrayObj && mNumVertices > 0)
+    if (mVertexArrayObj && mNumIndices > 0)
     {
-        mShaderProgram->Bind( modelMatrix );
+        mShaderProgram->Bind( modelMatrix, color );
         glBindVertexArray( mVertexArrayObj );
-        glDrawArrays( mPrimitiveType, 0, mNumVertices );
+        glDrawElements( mPrimitiveType, mNumIndices, GL_UNSIGNED_SHORT, nullptr );
     }
 }
 
@@ -223,12 +288,12 @@ void Mesh::Render( const glm::mat4& modelMatrix )
 Prop::Prop( const std::shared_ptr<Mesh>& mesh ):
     mMesh( mesh )
 {
-    ///mRot = (float)(rand() % 359);
     mPosXZ.x = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
     mPosXZ.y = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
     mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ = glm::normalize( mVelocityXZ );
+    mColor = gColors[rand() % gNumColors];
 }
 
 //=============================================================================
@@ -250,8 +315,9 @@ void Prop::Update( float const deltaTime )
     rot = glm::inverse( rot );
 
     mTransform = glm::mat4( 1.0f );
-    mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.0f, mPosXZ.y ) );
+    mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.5f, mPosXZ.y ) );
     mTransform *= rot;
+    mTransform = glm::scale( mTransform, glm::vec3( 0.01f, 0.01f, 0.01f ) );
 }
 
 //=============================================================================
@@ -260,7 +326,7 @@ void Prop::Render()
 {
     if (mMesh != nullptr)
     {
-        mMesh->Render( mTransform );
+        mMesh->Render( mTransform, mColor );
     }
 }
 
@@ -273,18 +339,11 @@ Floor::Floor( const std::shared_ptr<Mesh>& mesh ):
 
 //=============================================================================
 
-void Floor::Update( float const deltaTime )
-{
-    mTransform = glm::mat4( 1.0f );
-}
-
-//=============================================================================
-
 void Floor::Render()
 {
     if (mMesh != nullptr)
     {
-        mMesh->Render( mTransform );
+        mMesh->Render( glm::mat4( 1.0f ), glm::vec3( 0.5f, 0.5f, 0.5f ) );
     }
 }
 
@@ -328,10 +387,12 @@ void Camera::Update( float const deltaTime )
     mPosition += (gGameState->mButtonMask & GameState::BUTTON_RIGHT) ? ((speed * deltaTime) * glm::vec3( transform[0] )) : glm::vec3( 0.0f );
     transform[3] = glm::vec4( mPosition, 1.0f );
 
+    gGameState->mCameraMatrix = transform;
     gGameState->mViewMatrix = glm::inverse( transform );
 
     // build projection matrix wd / ht aspect ratio with 45 degree field of view
     gGameState->mProjectionMatrix = glm::perspective( glm::radians( 45.0f ), windowSize.x / windowSize.y, 0.1f, 100.0f );
+    //gGameState->mProjectionMatrix = glm::ortho( -10 * aspectRatio, 10.0f * aspectRatio, -10.0f, 10.0f, 0.1f, 100.0f );
 }
 
 //=============================================================================
@@ -352,8 +413,8 @@ void ProcessInput()
     double xpos, ypos;
     glfwGetCursorPos( gGameState->mWindow, &xpos, &ypos );
     gGameState->mPrevMousePos = gGameState->mCurMousePos;
-    gGameState->mCurMousePos.x = xpos;
-    gGameState->mCurMousePos.y = ypos;
+    gGameState->mCurMousePos.x = (float)xpos;
+    gGameState->mCurMousePos.y = (float)ypos;
 }
 
 //=============================================================================
@@ -407,8 +468,8 @@ bool Init()
 
     double xpos, ypos;
     glfwGetCursorPos( gGameState->mWindow, &xpos, &ypos );
-    gGameState->mCurMousePos.x = xpos;
-    gGameState->mCurMousePos.y = ypos;
+    gGameState->mCurMousePos.x = (float)xpos;
+    gGameState->mCurMousePos.y = (float)ypos;
 
     return true;
 }
@@ -469,56 +530,62 @@ std::shared_ptr<ShaderProgram> BuildShaderProgram()
 
     // get uniform parameter locations
     GLint const modelMatrixLoc = glGetUniformLocation( program, "model" );
+    GLint const itModelMatrixLoc = glGetUniformLocation( program, "itModel" );
     GLint const viewMatrixLoc = glGetUniformLocation( program, "view" );
     GLint const projectionMatrixLoc = glGetUniformLocation( program, "projection" );
+    GLint const colorLoc = glGetUniformLocation( program, "color" );
+    GLint const cameraDirLoc = glGetUniformLocation( program, "wsCameraDir" );
 
-    return std::shared_ptr<ShaderProgram>( new ShaderProgram( program, modelMatrixLoc, viewMatrixLoc, projectionMatrixLoc ) );
+    return std::shared_ptr<ShaderProgram>( new ShaderProgram( program, modelMatrixLoc, itModelMatrixLoc, viewMatrixLoc, projectionMatrixLoc, colorLoc, cameraDirLoc ) );
 }
 
 //=============================================================================
 
 std::shared_ptr<Mesh> BuildPropMesh( const std::shared_ptr<ShaderProgram>& shaderProgram )
 {
-    // set up vertex data (and buffer(s)) and configure vertex attributes
-    // ------------------------------------------------------------------
-    GLenum const primitiveType = GL_TRIANGLES;
-    GLsizei const numVertices = 3;
-    float vertices[] = 
-    {
-        // positions         // colors
-         0.5f, 0.0f, 0.0f,  1.0f, 0.0f, 0.0f,  // bottom right
-        -0.5f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  // bottom left
-         0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f   // top 
-    };
+    uint32_t const numVertices = sizeof( teapotVertices ) / sizeof( glm::vec3 );
+    uint32_t const numNormals = sizeof( teapotNormals ) / sizeof( glm::vec3 );
+    uint32_t const numIndices = sizeof( teapotIndices ) / sizeof( uint16_t );
+    uint32_t const numTris = numIndices / 3;
 
     // generate vertex buffer and vertex array objects
     GLuint vertexArrayObj = 0;
     GLuint vertexBufferObj = 0;
+    GLuint indexBufferObj = 0;
     glGenVertexArrays(1, &vertexArrayObj);
     glGenBuffers(1, &vertexBufferObj);
+    glGenBuffers(1, &indexBufferObj);
 
     // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
     glBindVertexArray(vertexArrayObj);
 
     // Alloc vertex buffer.
-    GLsizeiptr const bufferSize = sizeof(vertices);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObj);
-    glBufferData(GL_ARRAY_BUFFER, bufferSize, vertices, GL_STATIC_DRAW);
+    GLsizeiptr const vertexBufferSize = sizeof( teapotVertices ) + sizeof( teapotNormals );
+    glBindBuffer( GL_ARRAY_BUFFER, vertexBufferObj );
+    glBufferData( GL_ARRAY_BUFFER, vertexBufferSize, nullptr, GL_STATIC_DRAW );
+    glBufferSubData( GL_ARRAY_BUFFER, 0, sizeof( teapotVertices ), teapotVertices );
+    glBufferSubData( GL_ARRAY_BUFFER, sizeof( teapotVertices ), sizeof( teapotNormals ), teapotNormals );
+
+    // Alloc index buffer.
+    GLsizeiptr const indexBufferSize = sizeof( teapotIndices );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, indexBufferObj );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, indexBufferSize, teapotIndices, GL_STATIC_DRAW );
 
     // position attribute
-    GLsizei const stride = 6 * sizeof(float);
+    GLsizei const stride = 3 * sizeof(float);
     GLvoid* offset = (GLvoid*)0;
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, offset);
     glEnableVertexAttribArray(0);
     
     // color attribute
-    offset = (GLvoid*)(3 * sizeof(float));
+    //offset = (GLvoid*)(3 * sizeof(float));
+    offset = (GLvoid*)sizeof( teapotVertices );
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, offset);
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
-    return std::shared_ptr<Mesh>( new Mesh( shaderProgram, vertexArrayObj, vertexBufferObj, primitiveType, numVertices ) );
+    return std::shared_ptr<Mesh>( new Mesh( shaderProgram, vertexArrayObj, vertexBufferObj, indexBufferObj, GL_TRIANGLES, numIndices ) );
 }
 
 //=============================================================================
@@ -528,33 +595,42 @@ std::shared_ptr<Mesh> BuildFloorMesh( const std::shared_ptr<ShaderProgram>& shad
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
     GLenum const primitiveType = GL_TRIANGLES;
-    GLsizei const numVertices = 6;
-    float vertices[] = 
+    GLsizei const numVertices = 4;
+    GLsizei const numIndices = 6;
+    float const vertices[] = 
     {
-        // positions         // colors
-        -11.0f, 0.0f, -11.0f,  0.5f, 0.5f, 0.5f,  // bottom right
-        -11.0f, 0.0f,  11.0f,  0.5f, 0.5f, 0.5f,  // bottom left
-         11.0f, 0.0f, -11.0f,  0.5f, 0.5f, 0.5f,   // top 
-         
-         11.0f, 0.0f, -11.0f,  0.5f, 0.5f, 0.5f,  // bottom right
-         11.0f, 0.0f,  11.0f,  0.5f, 0.5f, 0.5f,  // bottom left
-        -11.0f, 0.0f,  11.0f,  0.5f, 0.5f, 0.5f   // top 
-
+        // positions              // normals
+        -11.0f, 0.0f, -11.0f,     0.0f, 1.0f, 0.0f,
+        -11.0f, 0.0f,  11.0f,     0.0f, 1.0f, 0.0f,
+         11.0f, 0.0f, -11.0f,     0.0f, 1.0f, 0.0f,
+         11.0f, 0.0f,  11.0f,     0.0f, 1.0f, 0.0f,
+    };
+    uint16_t const indices[] =
+    {
+        0, 1, 2,
+        2, 3, 1,
     };
 
     // generate vertex buffer and vertex array objects
     GLuint vertexArrayObj = 0;
     GLuint vertexBufferObj = 0;
+    GLuint indexBufferObj = 0;
     glGenVertexArrays(1, &vertexArrayObj);
     glGenBuffers(1, &vertexBufferObj);
+    glGenBuffers(1, &indexBufferObj);
 
     // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
     glBindVertexArray(vertexArrayObj);
 
     // Alloc vertex buffer.
-    GLsizeiptr const bufferSize = sizeof(vertices);
+    GLsizeiptr const vertexBufferSize = sizeof(vertices);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObj);
-    glBufferData(GL_ARRAY_BUFFER, bufferSize, vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertexBufferSize, vertices, GL_STATIC_DRAW);
+
+    // Alloc index buffer.
+    GLsizeiptr const indexBufferSize = sizeof(indices);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBufferObj);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBufferSize, indices, GL_STATIC_DRAW);
 
     // position attribute
     GLsizei const stride = 6 * sizeof(float);
@@ -569,7 +645,7 @@ std::shared_ptr<Mesh> BuildFloorMesh( const std::shared_ptr<ShaderProgram>& shad
 
     glBindVertexArray(0);
 
-    return std::shared_ptr<Mesh>( new Mesh( shaderProgram, vertexArrayObj, vertexBufferObj, primitiveType, numVertices ) );
+    return std::shared_ptr<Mesh>( new Mesh( shaderProgram, vertexArrayObj, vertexBufferObj, indexBufferObj, primitiveType, numIndices ) );
 }
 
 //=============================================================================
