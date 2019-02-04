@@ -4,9 +4,9 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/vec3.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm/glm.hpp>
+//#include <glm/mat4x4.hpp>
+//#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <memory>
 #include <vector>
@@ -92,7 +92,7 @@ struct Prop : public Object
     std::shared_ptr<Mesh> mMesh;
     glm::mat4 mTransform;
     glm::vec2 mPosXZ;
-    float mRot;
+    glm::vec2 mVelocityXZ;
 };
 
 //=============================================================================
@@ -106,6 +106,19 @@ struct Floor : public Object
 
     std::shared_ptr<Mesh> mMesh;
     glm::mat4 mTransform;
+};
+
+//=============================================================================
+
+struct Camera : public Object
+{
+    Camera();
+    virtual ~Camera() = default;
+    virtual void Update( float const deltaTime ) override;
+    virtual void Render() {}
+
+    glm::vec3 mPosition;
+    glm::vec2 mPitchYaw;
 };
 
 //=============================================================================
@@ -210,22 +223,37 @@ void Mesh::Render( const glm::mat4& modelMatrix )
 Prop::Prop( const std::shared_ptr<Mesh>& mesh ):
     mMesh( mesh )
 {
-    mRot = (float)(rand() % 359);
+    ///mRot = (float)(rand() % 359);
     mPosXZ.x = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
     mPosXZ.y = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
+    mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+    mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+    mVelocityXZ = glm::normalize( mVelocityXZ );
 }
 
 //=============================================================================
 
 void Prop::Update( float const deltaTime )
 {
-    // Rotate object.
-    float const rotationsPerSecond = 0.5f;
-    mRot += ((360.0f * rotationsPerSecond) * deltaTime);
-    mRot = fmodf( mRot, 360.0f );
+    float const speed = 2.5f;  // meters per second
+    mPosXZ += mVelocityXZ * deltaTime * speed;
+    if (mPosXZ.x < -10.0f || mPosXZ.x > 10.0f ||
+        mPosXZ.y < -10.0f || mPosXZ.y > 10.0f)
+    {
+        mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+        mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+        mVelocityXZ = glm::normalize( mVelocityXZ );
+        mPosXZ = glm::clamp( mPosXZ, -10.0f, 10.0f );
+    }
+
+    glm::mat4 rot = glm::lookAt( glm::vec3( 0.0f, 0.0f, 0.0f ), glm::vec3( mVelocityXZ.x, 0.0f, mVelocityXZ.y ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
+    rot = glm::inverse( rot );
+
     mTransform = glm::mat4( 1.0f );
     mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.0f, mPosXZ.y ) );
-    mTransform = glm::rotate( mTransform, glm::radians( mRot ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
+    mTransform *= rot;
+
+    //mTransform = glm::rotate( mTransform, glm::radians( mRot ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
 }
 
 //=============================================================================
@@ -264,6 +292,52 @@ void Floor::Render()
 
 //=============================================================================
 
+Camera::Camera():
+    mPosition( 0.0f, 0.0f, 20.0f ),
+    mPitchYaw( 0.0f, 0.0f )
+{
+}
+
+//=============================================================================
+
+void Camera::Update( float const deltaTime )
+{
+    // Get window size.
+    int wd;
+    int ht;
+    glfwGetWindowSize( gGameState->mWindow, &wd, &ht );
+    glm::vec2 const windowSize = glm::vec2( (float)wd, (float)ht );
+    float const aspectRatio = windowSize.x / windowSize.y;
+
+    // Increment pitch yaw.
+    glm::vec2 const rateOfRotation = glm::vec2( 90.0f * aspectRatio, 90.0f ); // degrees per normalized mouse movement
+    glm::vec2 const normalizedMouseDelta = (gGameState->mCurMousePos - gGameState->mPrevMousePos) / windowSize;
+    glm::vec2 const rotationDelta = -normalizedMouseDelta * rateOfRotation;
+    mPitchYaw += rotationDelta;
+    mPitchYaw.x = glm::mod( mPitchYaw.x, 360.0f );
+    mPitchYaw.y = glm::clamp( mPitchYaw.y, -90.0f, 90.0f );
+
+    // Calculate orientation.
+    glm::mat4 transform( 1.0f );
+    transform = glm::rotate( transform, glm::radians( mPitchYaw.x ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
+    transform = glm::rotate( transform, glm::radians( mPitchYaw.y ), glm::vec3( 1.0f, 0.0f, 0.0f ) );
+
+    // Update translation.
+    float const speed = 5.0f;  // meters per second
+    mPosition += (gGameState->mButtonMask & GameState::BUTTON_UP) ? -((speed * deltaTime) * glm::vec3( transform[2] )) : glm::vec3( 0.0f );
+    mPosition += (gGameState->mButtonMask & GameState::BUTTON_DOWN) ? ((speed * deltaTime) * glm::vec3( transform[2] )) : glm::vec3( 0.0f );
+    mPosition += (gGameState->mButtonMask & GameState::BUTTON_LEFT) ? -((speed * deltaTime) * glm::vec3( transform[0] )) : glm::vec3( 0.0f );
+    mPosition += (gGameState->mButtonMask & GameState::BUTTON_RIGHT) ? ((speed * deltaTime) * glm::vec3( transform[0] )) : glm::vec3( 0.0f );
+    transform[3] = glm::vec4( mPosition, 1.0f );
+
+    gGameState->mViewMatrix = glm::inverse( transform );
+
+    // build projection matrix wd / ht aspect ratio with 45 degree field of view
+    gGameState->mProjectionMatrix = glm::perspective( glm::radians( 45.0f ), windowSize.x / windowSize.y, 0.1f, 100.0f );
+}
+
+//=============================================================================
+
 void ProcessInput()
 {
     if (glfwGetKey( gGameState->mWindow, GLFW_KEY_ESCAPE ) == GLFW_PRESS)
@@ -272,10 +346,10 @@ void ProcessInput()
     }
 
     gGameState->mButtonMask = 0;
-    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_UP ) || glfwGetKey( gGameState->mWindow, GLFW_KEY_W )) ? GameState::BUTTON_UP : 0;
-    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_LEFT ) || glfwGetKey( gGameState->mWindow, GLFW_KEY_A )) ? GameState::BUTTON_LEFT : 0;
-    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_DOWN ) || glfwGetKey( gGameState->mWindow, GLFW_KEY_S )) ? GameState::BUTTON_DOWN : 0;
-    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_RIGHT ) || glfwGetKey( gGameState->mWindow, GLFW_KEY_D )) ? GameState::BUTTON_RIGHT : 0;
+    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_UP ) == GLFW_PRESS || glfwGetKey( gGameState->mWindow, GLFW_KEY_W ) == GLFW_PRESS) ? GameState::BUTTON_UP : 0;
+    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_LEFT ) == GLFW_PRESS || glfwGetKey( gGameState->mWindow, GLFW_KEY_A ) == GLFW_PRESS) ? GameState::BUTTON_LEFT : 0;
+    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_DOWN ) == GLFW_PRESS || glfwGetKey( gGameState->mWindow, GLFW_KEY_S ) == GLFW_PRESS) ? GameState::BUTTON_DOWN : 0;
+    gGameState->mButtonMask |= (glfwGetKey( gGameState->mWindow, GLFW_KEY_RIGHT ) == GLFW_PRESS || glfwGetKey( gGameState->mWindow, GLFW_KEY_D ) == GLFW_PRESS) ? GameState::BUTTON_RIGHT : 0;
 
     double xpos, ypos;
     glfwGetCursorPos( gGameState->mWindow, &xpos, &ypos );
@@ -330,6 +404,8 @@ bool Init()
         glfwTerminate();
         return false;
     }
+
+    glfwSetInputMode( gGameState->mWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED );
 
     double xpos, ypos;
     glfwGetCursorPos( gGameState->mWindow, &xpos, &ypos );
@@ -526,21 +602,6 @@ void Render()
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glEnable( GL_DEPTH_TEST );
 
-    // place camera back 2 units from 0,0,0 along z-axis, we are using OpenGL's
-    // default coordinate system where -z is into the screen
-    gGameState->mViewMatrix = glm::mat4( 1.0f );
-    gGameState->mViewMatrix = glm::translate( gGameState->mViewMatrix, glm::vec3( 0.0f, 1.0f, 20.0f ) ); 
-    // use inverse of camera matrix to move objects from worldspace into viewspace.
-    gGameState->mViewMatrix = glm::inverse( gGameState->mViewMatrix );
-
-    // get window size for projection matrix
-    int wd;
-    int ht;
-    glfwGetWindowSize( gGameState->mWindow, &wd, &ht );
-
-    // build projection matrix wd / ht aspect ratio with 45 degree field of view
-    gGameState->mProjectionMatrix = glm::perspective( glm::radians( 45.0f ), (float)wd / (float)ht, 0.1f, 100.0f );
-
     // render objects
     for (const auto& obj : gGameState->mObjects)
     {
@@ -585,11 +646,14 @@ int main()
         return -1;
     }
 
+    // create camera object
+    gGameState->mObjects.push_back( std::shared_ptr<Object>( new Camera() ) );
+
     // create floor object
     gGameState->mObjects.push_back( std::shared_ptr<Object>( new Floor( floorMesh ) ) );
 
     // create prop object
-    uint32_t const numProps = 25;
+    uint32_t const numProps = 100;
     for (uint32_t i = 0; i < numProps; i++)
     {
         gGameState->mObjects.push_back( std::shared_ptr<Object>( new Prop( propMesh ) ) );
