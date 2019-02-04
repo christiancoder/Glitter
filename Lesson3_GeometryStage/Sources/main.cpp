@@ -18,8 +18,8 @@ const unsigned int SCR_HEIGHT = 600;
 
 //=============================================================================
 
-//    "   vec3 wsNormal = itModel * aNormal;\n"
-//    "   outColor = max( dot( wsNormal, wsCameraDir ), 0.0 ) * color;\n"
+//    "   float ndotl = max( dot( wsNormal, wsCameraDir ), 0.0 );\n"
+//    "   outColor = ndotl * color;\n"
 
 const char* vertexShaderSource ="#version 330 core\n"
     "uniform mat4 model;\n"
@@ -34,6 +34,7 @@ const char* vertexShaderSource ="#version 330 core\n"
     "void main()\n"
     "{\n"
     "   gl_Position = projection * view * model * vec4( aPos, 1.0 );\n"
+    "   vec3 wsNormal = itModel * aNormal;\n"
     "   outColor = color;\n"
     "}\n"
     "\0";
@@ -189,6 +190,8 @@ struct GameState
     uint32_t mButtonMask;
     glm::vec2 mPrevMousePos;
     glm::vec2 mCurMousePos;
+    bool mPauseKey;
+    bool mPaused;
 };
 
 //=============================================================================
@@ -300,6 +303,9 @@ Prop::Prop( const std::shared_ptr<Mesh>& mesh ):
 
 void Prop::Update( float const deltaTime )
 {
+    if (gGameState->mPaused)
+        return;
+
     float const speed = 2.5f;  // meters per second
     mPosXZ += mVelocityXZ * deltaTime * speed;
     if (mPosXZ.x < -10.0f || mPosXZ.x > 10.0f ||
@@ -415,6 +421,13 @@ void ProcessInput()
     gGameState->mPrevMousePos = gGameState->mCurMousePos;
     gGameState->mCurMousePos.x = (float)xpos;
     gGameState->mCurMousePos.y = (float)ypos;
+
+    bool const pauseKey = glfwGetKey( gGameState->mWindow, GLFW_KEY_P ) == GLFW_PRESS ? true : false;
+    if (!pauseKey && gGameState->mPauseKey)
+    {
+        gGameState->mPaused = !gGameState->mPaused;
+    }
+    gGameState->mPauseKey = pauseKey;
 }
 
 //=============================================================================
@@ -470,6 +483,9 @@ bool Init()
     glfwGetCursorPos( gGameState->mWindow, &xpos, &ypos );
     gGameState->mCurMousePos.x = (float)xpos;
     gGameState->mCurMousePos.y = (float)ypos;
+
+    gGameState->mPauseKey = false;
+    gGameState->mPaused = false;
 
     return true;
 }
