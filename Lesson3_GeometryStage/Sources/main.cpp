@@ -252,8 +252,6 @@ void Prop::Update( float const deltaTime )
     mTransform = glm::mat4( 1.0f );
     mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.0f, mPosXZ.y ) );
     mTransform *= rot;
-
-    //mTransform = glm::rotate( mTransform, glm::radians( mRot ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
 }
 
 //=============================================================================
@@ -293,8 +291,8 @@ void Floor::Render()
 //=============================================================================
 
 Camera::Camera():
-    mPosition( 0.0f, 0.0f, 20.0f ),
-    mPitchYaw( 0.0f, 0.0f )
+    mPosition( 0.0f, 13.0f, 23.0f ),
+    mPitchYaw( 0.0f, -28.0f )
 {
 }
 
