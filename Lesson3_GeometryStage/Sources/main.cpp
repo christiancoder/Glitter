@@ -18,6 +18,7 @@ const unsigned int SCR_HEIGHT = 600;
 
 //=============================================================================
 
+//    "   vec3 wsNormal = itModel * aNormal;\n"
 //    "   float ndotl = max( dot( wsNormal, wsCameraDir ), 0.0 );\n"
 //    "   outColor = ndotl * color;\n"
 
@@ -34,7 +35,6 @@ const char* vertexShaderSource ="#version 330 core\n"
     "void main()\n"
     "{\n"
     "   gl_Position = projection * view * model * vec4( aPos, 1.0 );\n"
-    "   vec3 wsNormal = itModel * aNormal;\n"
     "   outColor = color;\n"
     "}\n"
     "\0";
