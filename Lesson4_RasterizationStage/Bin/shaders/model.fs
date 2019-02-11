@@ -6,6 +6,7 @@ in vec2 fromVtxTexCoords;
 uniform sampler2D texture_diffuse1;
 uniform vec3 wsCameraDir;
 
+
 out vec4 fromFragColor;
 
 void main()
@@ -20,7 +21,7 @@ void main()
 
 
 
-
+#if 0
 varying vec3 normalInterp;
 varying vec3 vertPos;
 
@@ -72,5 +73,5 @@ void main() {
   // use the gamma corrected color in the fragment
   gl_FragColor = vec4(colorGammaCorrected, 1.0);
 }
-
+#endif
 

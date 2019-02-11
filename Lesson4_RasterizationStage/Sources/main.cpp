@@ -26,8 +26,8 @@ struct Object
 {
     Object() = default;
     virtual ~Object() = default;
-    virtual void Update( float const deltaTime ) = 0;
-    virtual void Render() = 0;
+    virtual void Update( float const deltaTime ) {};
+    virtual void Render() {};
 };
 
 //=============================================================================
@@ -52,7 +52,6 @@ struct Floor : public Object
 {
     Floor( const std::shared_ptr<Model>& model );
     virtual ~Floor() = default;
-    virtual void Update( float const deltaTime ) {}
     virtual void Render() override;
 
     std::shared_ptr<Model> mModel;
@@ -65,10 +64,22 @@ struct Camera : public Object
     Camera();
     virtual ~Camera() = default;
     virtual void Update( float const deltaTime ) override;
-    virtual void Render() {}
 
     glm::vec3 mPosition;
     glm::vec2 mPitchYaw;
+};
+
+//=============================================================================
+
+struct Light : public Object
+{
+    Light( const glm::vec3& color );
+    virtual ~Light() = default;
+    virtual void Update( float const deltaTime ) override;
+
+    glm::vec3 mPosition;
+    glm::vec3 mColor;
+    float mPower;
 };
 
 //=============================================================================
@@ -88,6 +99,7 @@ struct GameState
     glm::mat4 mCameraMatrix;
     glm::mat4 mProjectionMatrix;
     std::vector<std::shared_ptr<Object>> mObjects;
+    std::vector<std::shared_ptr<Light>> mLights;
     uint32_t mButtonMask;
     glm::vec2 mPrevMousePos;
     glm::vec2 mCurMousePos;
@@ -223,6 +235,40 @@ void Camera::Update( float const deltaTime )
     // build projection matrix wd / ht aspect ratio with 45 degree field of view
     gGameState->mProjectionMatrix = glm::perspective( glm::radians( 45.0f ), windowSize.x / windowSize.y, 0.1f, 100.0f );
     //gGameState->mProjectionMatrix = glm::ortho( -10 * aspectRatio, 10.0f * aspectRatio, -10.0f, 10.0f, 0.1f, 100.0f );
+}
+
+//=============================================================================
+
+Light::Light( const glm::vec3& color ):
+    mColor( color )
+{
+    mPosXZ.x = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
+    mPosXZ.y = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
+    mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+    mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+    mVelocityXZ = glm::normalize( mVelocityXZ );
+}
+
+//=============================================================================
+
+void Light::Update( float const deltaTime )
+{
+    if (gGameState->mPaused)
+        return;
+
+    float const speed = 2.5f;  // meters per second
+    mPosXZ += mVelocityXZ * deltaTime * speed;
+    if (mPosXZ.x < -10.0f || mPosXZ.x > 10.0f ||
+        mPosXZ.y < -10.0f || mPosXZ.y > 10.0f)
+    {
+        mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+        mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+        mVelocityXZ = glm::normalize( mVelocityXZ );
+        mPosXZ = glm::clamp( mPosXZ, -10.0f, 10.0f );
+    }
+
+    // Blinking lights?
+    // update power.
 }
 
 //=============================================================================
