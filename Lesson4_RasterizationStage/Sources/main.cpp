@@ -11,7 +11,6 @@
 #include <memory>
 #include <vector>
 #include <iostream>
-#include "teapot.h"
 
 
 //=============================================================================
@@ -19,13 +18,14 @@
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+const float FLOOR_SIZE = 50.0f;
+const float FLOOR_HALF_SIZE = FLOOR_SIZE * 0.5f;
 
 //=============================================================================
 
 struct Object
 {
-    Object() = default;
-    virtual ~Object() = default;
+    virtual ~Object() {};
     virtual void Update( float const deltaTime ) {};
     virtual void Render() {};
 };
@@ -34,8 +34,8 @@ struct Object
 
 struct Prop : public Object
 {
-    Prop( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader );
-    virtual ~Prop() = default;
+    Prop( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader, float const scale );
+    virtual ~Prop() {};
     virtual void Update( float const deltaTime ) override;
     virtual void Render() override;
 
@@ -44,17 +44,22 @@ struct Prop : public Object
     glm::mat4 mTransform;
     glm::vec2 mPosXZ;
     glm::vec2 mVelocityXZ;
+    float mScale;
+    float mOverrideDist;
+    uint32_t mUpdateFrame;
 };
 
 //=============================================================================
 
 struct Floor : public Object
 {
-    Floor( const std::shared_ptr<Model>& model );
-    virtual ~Floor() = default;
+    Floor( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader );
+    virtual ~Floor() {};
     virtual void Render() override;
 
     std::shared_ptr<Model> mModel;
+    std::shared_ptr<Shader> mShader;
+    glm::mat4 mTransform;
 };
 
 //=============================================================================
@@ -62,7 +67,7 @@ struct Floor : public Object
 struct Camera : public Object
 {
     Camera();
-    virtual ~Camera() = default;
+    virtual ~Camera() {};
     virtual void Update( float const deltaTime ) override;
 
     glm::vec3 mPosition;
@@ -74,10 +79,11 @@ struct Camera : public Object
 struct Light : public Object
 {
     Light( const glm::vec3& color );
-    virtual ~Light() = default;
+    virtual ~Light() {};
     virtual void Update( float const deltaTime ) override;
 
-    glm::vec3 mPosition;
+    glm::vec2 mPosXZ;
+    glm::vec2 mVelocityXZ;
     glm::vec3 mColor;
     float mPower;
 };
@@ -103,6 +109,7 @@ struct GameState
     uint32_t mButtonMask;
     glm::vec2 mPrevMousePos;
     glm::vec2 mCurMousePos;
+    uint32_t mFrame;
     bool mPauseKey;
     bool mPaused;
 };
@@ -113,12 +120,15 @@ static std::shared_ptr<GameState> gGameState;
 
 //=============================================================================
 
-Prop::Prop( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader ):
+Prop::Prop( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader, float const scale ):
     mModel( model ),
-    mShader( shader )
+    mShader( shader ),
+    mScale( scale ),
+    mOverrideDist( 0.0f ),
+    mUpdateFrame( 0 )
 {
-    mPosXZ.x = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
-    mPosXZ.y = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
+    mPosXZ.x = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
+    mPosXZ.y = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
     mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ = glm::normalize( mVelocityXZ );
@@ -131,24 +141,65 @@ void Prop::Update( float const deltaTime )
     if (gGameState->mPaused)
         return;
 
-    float const speed = 2.5f;  // meters per second
-    mPosXZ += mVelocityXZ * deltaTime * speed;
-    if (mPosXZ.x < -10.0f || mPosXZ.x > 10.0f ||
-        mPosXZ.y < -10.0f || mPosXZ.y > 10.0f)
+    // If somebody else updated us ignore position update.
+    if (mUpdateFrame != gGameState->mFrame)
     {
-        mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
-        mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
-        mVelocityXZ = glm::normalize( mVelocityXZ );
-        mPosXZ = glm::clamp( mPosXZ, -10.0f, 10.0f );
+        // Calc new pos.
+        float const speed = 2.5f;  // meters per second
+        float const dist = deltaTime * speed;
+        glm::vec2 const newPos = mPosXZ + (mVelocityXZ * dist);
+        mOverrideDist = glm::max( mOverrideDist - dist, 0.0f );
+        
+        // Have we hit a wall.
+        bool collision = newPos.x < -FLOOR_HALF_SIZE || newPos.x > FLOOR_HALF_SIZE ||
+                         newPos.y < -FLOOR_HALF_SIZE || newPos.y > FLOOR_HALF_SIZE;
+
+        // If we haven't hit a wall see if we hit anybody else.
+        Prop* prop = nullptr;
+        if (!collision && mOverrideDist == 0.0f)
+        {
+            for (const auto& obj : gGameState->mObjects)
+            {
+                prop = dynamic_cast<Prop*>( obj.get() );
+                if (prop != nullptr && prop != this && prop->mUpdateFrame != gGameState->mFrame)
+                {
+                    collision = length( newPos - prop->mPosXZ ) < 0.5f;
+                    if (collision)
+                    {
+                        mOverrideDist = 0.5f;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (collision)
+        {
+            //mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+            //mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
+            //mVelocityXZ = glm::normalize( mVelocityXZ );
+            mVelocityXZ = -mVelocityXZ;
+            if (prop != nullptr)
+            {
+                prop->mVelocityXZ = -prop->mVelocityXZ;
+                mOverrideDist = 0.5f;
+                mUpdateFrame = gGameState->mFrame;
+            }
+        }
+        else
+        {
+            mPosXZ = newPos;
+        }
+        mUpdateFrame = gGameState->mFrame;
     }
 
     glm::mat4 rot = glm::lookAt( glm::vec3( 0.0f, 0.0f, 0.0f ), glm::vec3( -mVelocityXZ.x, 0.0f, -mVelocityXZ.y ), glm::vec3( 0.0f, 1.0f, 0.0f ) );
     rot = glm::inverse( rot );
 
     mTransform = glm::mat4( 1.0f );
-    mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.5f, mPosXZ.y ) );
+    mTransform = glm::translate( mTransform, glm::vec3( mPosXZ.x, 0.0f, mPosXZ.y ) );
     mTransform *= rot;
-    mTransform = glm::scale( mTransform, glm::vec3( 0.1f, 0.1f, 0.1f ) );
+    mTransform = glm::scale( mTransform, glm::vec3( mScale ) );
 }
 
 //=============================================================================
@@ -174,19 +225,33 @@ void Prop::Render()
 
 //=============================================================================
 
-Floor::Floor( const std::shared_ptr<Model>& model ):
-    mModel( model )
+Floor::Floor( const std::shared_ptr<Model>& model, const std::shared_ptr<Shader>& shader ):
+    mModel( model ),
+    mShader( shader )
 {
+    mTransform = glm::mat4( 1.0f );
+    mTransform = glm::scale( mTransform, glm::vec3( FLOOR_SIZE, 1.0f, FLOOR_SIZE ) );
 }
 
 //=============================================================================
 
 void Floor::Render()
 {
-    /*if (mMesh != nullptr)
+    if (mModel != nullptr && mShader != nullptr)
     {
-        mMesh->Render( glm::mat4( 1.0f ), glm::vec3( 0.5f, 0.5f, 0.5f ) );
-    }*/
+        glm::mat3 itModelMatrix( 1.0f );
+        itModelMatrix[0] = normalize( glm::vec3( mTransform[0] ) );
+        itModelMatrix[1] = normalize( glm::vec3( mTransform[1] ) );
+        itModelMatrix[2] = normalize( glm::vec3( mTransform[2] ) );
+
+        mShader->use();
+        mShader->setMat4( "projection", gGameState->mProjectionMatrix );
+        mShader->setMat4( "view", gGameState->mViewMatrix );
+        mShader->setMat4( "model", mTransform );
+        mShader->setMat3( "itModel", itModelMatrix );
+        mShader->setVec3( "wsCameraDir", gGameState->mCameraMatrix[2] );
+        mModel->Draw( *mShader );
+    }
 }
 
 //=============================================================================
@@ -234,7 +299,7 @@ void Camera::Update( float const deltaTime )
 
     // build projection matrix wd / ht aspect ratio with 45 degree field of view
     gGameState->mProjectionMatrix = glm::perspective( glm::radians( 45.0f ), windowSize.x / windowSize.y, 0.1f, 100.0f );
-    //gGameState->mProjectionMatrix = glm::ortho( -10 * aspectRatio, 10.0f * aspectRatio, -10.0f, 10.0f, 0.1f, 100.0f );
+    //gGameState->mProjectionMatrix = glm::ortho( -10 * aspectRatio, 10.0f * aspectRatio, -FLOOR_HALF_SIZE, 10.0f, 0.1f, 100.0f );
 }
 
 //=============================================================================
@@ -242,8 +307,8 @@ void Camera::Update( float const deltaTime )
 Light::Light( const glm::vec3& color ):
     mColor( color )
 {
-    mPosXZ.x = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
-    mPosXZ.y = -10.0f + ((float)(rand() % 101) / 100.0f * 20.0f);
+    mPosXZ.x = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
+    mPosXZ.y = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
     mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
     mVelocityXZ = glm::normalize( mVelocityXZ );
@@ -258,13 +323,13 @@ void Light::Update( float const deltaTime )
 
     float const speed = 2.5f;  // meters per second
     mPosXZ += mVelocityXZ * deltaTime * speed;
-    if (mPosXZ.x < -10.0f || mPosXZ.x > 10.0f ||
-        mPosXZ.y < -10.0f || mPosXZ.y > 10.0f)
+    if (mPosXZ.x < -FLOOR_HALF_SIZE || mPosXZ.x > FLOOR_HALF_SIZE ||
+        mPosXZ.y < -FLOOR_HALF_SIZE || mPosXZ.y > FLOOR_HALF_SIZE)
     {
         mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
         mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
         mVelocityXZ = glm::normalize( mVelocityXZ );
-        mPosXZ = glm::clamp( mPosXZ, -10.0f, 10.0f );
+        mPosXZ = glm::clamp( mPosXZ, -FLOOR_HALF_SIZE, FLOOR_HALF_SIZE );
     }
 
     // Blinking lights?
@@ -357,6 +422,8 @@ bool Init()
     gGameState->mPauseKey = false;
     gGameState->mPaused = false;
 
+    gGameState->mFrame = 1;
+
     return true;
 }
 
@@ -383,8 +450,8 @@ void Update( float const deltaTime )
 
 void Render()
 {
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    //glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glEnable( GL_DEPTH_TEST );
 
@@ -412,30 +479,28 @@ int main()
     }
 
     // create shader program
-    std::shared_ptr<Shader> shader( new Shader( "shaders/model.vs", "shaders/model.fs" ) );
+    std::shared_ptr<Shader> modelShader( new Shader( "shaders/model.vs", "shaders/model.fs" ) );
 
     // load models
     // -----------
-    std::shared_ptr<Model> model( new Model( "objects/nanosuit/nanosuit.obj" ) );
+    std::shared_ptr<Model> propModelA( new Model( "objects/nanosuit/nanosuit.obj" ) );
+    std::shared_ptr<Model> propModelB( new Model( "objects/cyborg/cyborg.obj" ) );
 
     // create floor mesh
-    /*std::shared_ptr<Mesh> floorMesh = BuildFloorMesh( shaderProgram );
-    if (floorMesh == nullptr)
-    {
-        return -1;
-    }*/
+    std::shared_ptr<Model> floorModel( new Model( "objects/floor/floor.obj" ) );
 
     // create camera object
     gGameState->mObjects.push_back( std::shared_ptr<Object>( new Camera() ) );
 
     // create floor object
-    gGameState->mObjects.push_back( std::shared_ptr<Object>( new Floor( nullptr ) ) );
+    gGameState->mObjects.push_back( std::shared_ptr<Object>( new Floor( floorModel, modelShader ) ) );
 
     // create prop object
-    uint32_t const numProps = 100;
+    uint32_t const numProps = 300;
     for (uint32_t i = 0; i < numProps; i++)
     {
-        gGameState->mObjects.push_back( std::shared_ptr<Object>( new Prop( model, shader ) ) );
+        uint32_t const modelIndex = rand() % 2;
+        gGameState->mObjects.push_back( std::shared_ptr<Object>( new Prop( modelIndex == 0 ? propModelA : propModelB, modelShader, modelIndex == 0 ? 0.125f : 0.5f ) ) );
     }
 
     // game loop
@@ -450,6 +515,8 @@ int main()
 
         // render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
         Render();
+
+        gGameState->mFrame++;
     }
 
     // glfw: terminate, clearing all previously allocated GLFW resources.

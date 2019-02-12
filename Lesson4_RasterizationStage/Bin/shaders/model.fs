@@ -14,8 +14,8 @@ void main()
     vec3 txtrClr = texture( texture_diffuse1, fromVtxTexCoords ).rgb;
     vec3 wsNormal = normalize( fromVtxNormal );
     float ndotl = max( dot( wsNormal, wsCameraDir ), 0.0 );
-    fromFragColor.rgb = txtrClr * (max( dot( wsNormal, vec3( 0.0, 1.0, 0.0 ) ), 0.0 ) * vec3( 0.0, 1.0, 0.0 ) * 2.0);
-    fromFragColor.rgb += txtrClr * (max( dot( wsNormal, wsCameraDir ), 0.0 ) * vec3( 1.0, 0.0, 0.0 ) * 2.0);
+    fromFragColor.rgb = txtrClr * (max( dot( wsNormal, vec3( 0.0, 1.0, 0.0 ) ), 0.0 ) * vec3( 1.0, 1.0, 1.0 ));
+    fromFragColor.rgb += txtrClr * (max( dot( wsNormal, wsCameraDir ), 0.0 ) * vec3( 1.0, 1.0, 1.0 ));
     fromFragColor.w = 1.0;
 }
 
