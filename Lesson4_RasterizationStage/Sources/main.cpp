@@ -12,7 +12,6 @@
 #include <vector>
 #include <iostream>
 
-
 //=============================================================================
 
 // settings
@@ -85,7 +84,7 @@ struct Light : public Object
     glm::vec2 mPosXZ;
     glm::vec2 mVelocityXZ;
     glm::vec3 mColor;
-    float mPower;
+    float mRadius;
 };
 
 //=============================================================================
@@ -175,9 +174,6 @@ void Prop::Update( float const deltaTime )
 
         if (collision)
         {
-            //mVelocityXZ.x = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
-            //mVelocityXZ.y = -1.0f + ((float)(rand() % 101) / 100.0f * 2.0f);
-            //mVelocityXZ = glm::normalize( mVelocityXZ );
             mVelocityXZ = -mVelocityXZ;
             if (prop != nullptr)
             {
@@ -214,11 +210,8 @@ void Prop::Render()
         itModelMatrix[2] = normalize( glm::vec3( mTransform[2] ) );
 
         mShader->use();
-        mShader->setMat4( "projection", gGameState->mProjectionMatrix );
-        mShader->setMat4( "view", gGameState->mViewMatrix );
         mShader->setMat4( "model", mTransform );
         mShader->setMat3( "itModel", itModelMatrix );
-        mShader->setVec3( "wsCameraDir", gGameState->mCameraMatrix[2] );
         mModel->Draw( *mShader );
     }
 }
@@ -245,11 +238,8 @@ void Floor::Render()
         itModelMatrix[2] = normalize( glm::vec3( mTransform[2] ) );
 
         mShader->use();
-        mShader->setMat4( "projection", gGameState->mProjectionMatrix );
-        mShader->setMat4( "view", gGameState->mViewMatrix );
         mShader->setMat4( "model", mTransform );
         mShader->setMat3( "itModel", itModelMatrix );
-        mShader->setVec3( "wsCameraDir", gGameState->mCameraMatrix[2] );
         mModel->Draw( *mShader );
     }
 }
@@ -305,7 +295,8 @@ void Camera::Update( float const deltaTime )
 //=============================================================================
 
 Light::Light( const glm::vec3& color ):
-    mColor( color )
+    mColor( color ),
+    mRadius( 10.0f )
 {
     mPosXZ.x = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
     mPosXZ.y = -FLOOR_HALF_SIZE + ((float)(rand() % 101) / 100.0f * FLOOR_SIZE);
@@ -321,7 +312,7 @@ void Light::Update( float const deltaTime )
     if (gGameState->mPaused)
         return;
 
-    float const speed = 2.5f;  // meters per second
+    float const speed = 5.0f;  // meters per second
     mPosXZ += mVelocityXZ * deltaTime * speed;
     if (mPosXZ.x < -FLOOR_HALF_SIZE || mPosXZ.x > FLOOR_HALF_SIZE ||
         mPosXZ.y < -FLOOR_HALF_SIZE || mPosXZ.y > FLOOR_HALF_SIZE)
@@ -331,9 +322,6 @@ void Light::Update( float const deltaTime )
         mVelocityXZ = glm::normalize( mVelocityXZ );
         mPosXZ = glm::clamp( mPosXZ, -FLOOR_HALF_SIZE, FLOOR_HALF_SIZE );
     }
-
-    // Blinking lights?
-    // update power.
 }
 
 //=============================================================================
@@ -448,21 +436,50 @@ void Update( float const deltaTime )
 
 //=============================================================================
 
-void Render()
+void PrepareShader( const std::shared_ptr<Shader>& shader )
+{
+    shader->use();
+
+    // Set projection and view matrix.
+    shader->setMat4( "projection", gGameState->mProjectionMatrix );
+    shader->setMat4( "view", gGameState->mViewMatrix );
+
+    // Set camera position.
+    shader->setVec3( "cameraPos", gGameState->mCameraMatrix[3] );
+
+    // Set lighting state.
+    char nameStr[64];
+    for (uint32_t i = 0; i < gGameState->mLights.size(); i++)
+    {
+        sprintf( nameStr, "lightPositions[%d]", i );
+        shader->setVec3( nameStr, glm::vec3( gGameState->mLights[i]->mPosXZ.x, 2.0f, gGameState->mLights[i]->mPosXZ.y ) );
+        sprintf( nameStr, "lightColors[%d]", i );
+        shader->setVec3( nameStr, gGameState->mLights[i]->mColor );
+        sprintf( nameStr, "lightRadii[%d]", i );
+        shader->setFloat( nameStr, gGameState->mLights[i]->mRadius );
+    }
+
+}
+
+//=============================================================================
+
+void Render( const std::shared_ptr<Shader>& shader )
 {
     //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glEnable( GL_DEPTH_TEST );
 
-    // render objects
+    // Set shader constants.
+    PrepareShader( shader );
+
+    // Render objects
     for (const auto& obj : gGameState->mObjects)
     {
         obj->Render();
     }
 
-    // glfw: swap buffers
-    // -------------------------------------------------------------------------------
+    // Swap buffers.
     glfwSwapBuffers( gGameState->mWindow );
 }
 
@@ -496,11 +513,29 @@ int main()
     gGameState->mObjects.push_back( std::shared_ptr<Object>( new Floor( floorModel, modelShader ) ) );
 
     // create prop object
-    uint32_t const numProps = 300;
+    uint32_t const numProps = 150;
     for (uint32_t i = 0; i < numProps; i++)
     {
         uint32_t const modelIndex = rand() % 2;
         gGameState->mObjects.push_back( std::shared_ptr<Object>( new Prop( modelIndex == 0 ? propModelA : propModelB, modelShader, modelIndex == 0 ? 0.125f : 0.5f ) ) );
+    }
+
+    // create lights
+    glm::vec3 const colors[6] = 
+    {
+        glm::vec3( 1.0f, 0.0f, 0.0f ),
+        glm::vec3( 0.0f, 1.0f, 0.0f ),
+        glm::vec3( 0.0f, 0.0f, 1.0f ),
+        glm::vec3( 1.0f, 1.0f, 0.0f ),
+        glm::vec3( 0.0f, 1.0f, 1.0f ),
+        glm::vec3( 1.0f, 0.0f, 1.0f ),
+    };
+    uint32_t const numLights = 10;
+    for (uint32_t i = 0; i < numLights; i++)
+    {
+        std::shared_ptr<Light> light( new Light( colors[rand() % 6] ) );
+        gGameState->mObjects.push_back( light );
+        gGameState->mLights.push_back( light );
     }
 
     // game loop
@@ -514,7 +549,7 @@ int main()
         t0 = t1;
 
         // render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
-        Render();
+        Render( modelShader );
 
         gGameState->mFrame++;
     }
