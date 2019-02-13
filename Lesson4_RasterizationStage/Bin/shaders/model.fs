@@ -5,11 +5,11 @@ in vec3 fromVtxNormal;
 in vec2 fromVtxTexCoords;
 
 const int numLights = 10;
-const float shininess = 70.0;
 const float screenGamma = 2.2;
 
 uniform sampler2D texture_diffuse1;
 uniform vec3 cameraPos;
+uniform float shininess;
 
 uniform vec3 lightPositions[numLights];
 uniform vec3 lightColors[numLights];
@@ -34,17 +34,12 @@ vec3 handlePointLight( vec3 vertPos, vec3 vertNormal, vec3 lightPos, vec3 lightC
         specular = pow(specAngle, shininess);
 
         float atten = 1.0 - min( distance, lightRadius ) / lightRadius;
+        //float atten = 1.0 / (distance * distance);
         diffuse *= atten;
         specular *= atten;
     }
 
-    vec3 colorLinear = (lightColor * diffuse) + (lightColor * specular);
-    //return colorLinear;
-
-    // apply gamma correction (assume ambientColor, diffuseColor and specColor
-    // have been linearized, i.e. have no gamma correction in them)
-    vec3 colorGammaCorrected = pow(colorLinear, vec3(1.0/screenGamma));
-    return colorGammaCorrected;
+    return ((lightColor * diffuse) + (lightColor * specular)) * 10.0;
 }
 
 void main()
@@ -56,8 +51,10 @@ void main()
         lightClr += handlePointLight( fromVtxPos, wsNormal, lightPositions[i], lightColors[i], lightRadii[i] );
     }
 
-    vec3 txtrClr = texture( texture_diffuse1, fromVtxTexCoords ).rgb;
-    fromFragColor.rgb = lightClr * txtrClr * 2.5;
+    vec3 txtrClr = pow( texture( texture_diffuse1, fromVtxTexCoords ).rgb, vec3( screenGamma ) );
+    fromFragColor.rgb = lightClr * txtrClr;
     //fromFragColor.rgb = lightClr + (txtrClr * 0.001);
+
+    fromFragColor.rgb = pow(fromFragColor.rgb, vec3(1.0/screenGamma));
     fromFragColor.w = 1.0;
 }
