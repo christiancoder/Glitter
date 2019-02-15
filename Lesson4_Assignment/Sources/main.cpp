@@ -146,7 +146,7 @@ struct Object
     virtual void Update( float const deltaTime )
     {
         // Rotate object.
-        float const rotationsPerSecond = 0.5f;
+        float const rotationsPerSecond = 0.25f;
         mRot += ((360.0f * rotationsPerSecond) * deltaTime);
         mRot = fmodf( mRot, 360.0f );
         mTransform = glm::rotate( glm::mat4( 1.0f ), glm::radians( mRot ), glm::vec3( 0.0f, 0.0f, 1.0f ) );
@@ -300,13 +300,17 @@ std::shared_ptr<Mesh> BuildPropMesh( const std::shared_ptr<ShaderProgram>& shade
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
     GLenum const primitiveType = GL_TRIANGLES;
-    GLsizei const numVertices = 3;
+    GLsizei const numVertices = 6;
     float vertices[] = 
     {
         // positions         // colors          // uvs
          0.5f, -0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  1.0, 1.0, // bottom right
         -0.5f, -0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  0.0, 1.0, // bottom left
-         0.0f,  0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  0.5, 0.0, // top 
+        -0.5f,  0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  0.0, 0.0, // top 
+
+        -0.5f,  0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  0.0, 0.0, // bottom right
+         0.5f,  0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  1.0, 0.0, // bottom left
+         0.5f, -0.5f, 0.0f,  1.0f, 1.0f, 1.0f,  1.0, 1.0, // top 
     };
 
     // generate vertex buffer and vertex array objects
