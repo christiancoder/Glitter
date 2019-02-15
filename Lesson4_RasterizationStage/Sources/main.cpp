@@ -212,7 +212,9 @@ void Prop::Render()
         mShader->use();
         mShader->setMat4( "model", mTransform );
         mShader->setMat3( "itModel", itModelMatrix );
-        mShader->setFloat( "shininess", 50.0f );
+        mShader->setFloat( "shininess", 100.0f );
+        mShader->setFloat( "diffuseScale", 1.0f );
+        mShader->setFloat( "specularScale", 1.0f );
         mModel->Draw( *mShader );
     }
 }
@@ -241,7 +243,9 @@ void Floor::Render()
         mShader->use();
         mShader->setMat4( "model", mTransform );
         mShader->setMat3( "itModel", itModelMatrix );
-        mShader->setFloat( "shininess", 1.0f );
+        mShader->setFloat( "shininess", 100.0f );
+        mShader->setFloat( "diffuseScale", 1.0f );
+        mShader->setFloat( "specularScale", 0.0f );
         mModel->Draw( *mShader );
     }
 }
@@ -457,7 +461,7 @@ void PrepareShader( const std::shared_ptr<Shader>& shader )
     for (uint32_t i = 0; i < gGameState->mLights.size(); i++)
     {
         sprintf( nameStr, "lightPositions[%d]", i );
-        shader->setVec3( nameStr, glm::vec3( gGameState->mLights[i]->mPosXZ.x, 1.0f, gGameState->mLights[i]->mPosXZ.y ) );
+        shader->setVec3( nameStr, glm::vec3( gGameState->mLights[i]->mPosXZ.x, 2.0f, gGameState->mLights[i]->mPosXZ.y ) );
         sprintf( nameStr, "lightColors[%d]", i );
         shader->setVec3( nameStr, gGameState->mLights[i]->mColor );
         sprintf( nameStr, "lightRadii[%d]", i );
@@ -527,19 +531,20 @@ int main()
 
     // create lights
     uint32_t const numColors = 6;
+    float const lightPower = 10.0f;
     glm::vec3 const colors[numColors] = 
     {
-        glm::vec3( 0.0f, 1.0f, 0.0f ),
-        glm::vec3( 0.0f, 0.0f, 1.0f ),
-        glm::vec3( 1.0f, 0.0f, 0.0f ),
-        glm::vec3( 1.0f, 1.0f, 0.0f ),
-        glm::vec3( 0.0f, 1.0f, 1.0f ),
-        glm::vec3( 1.0f, 0.0f, 1.0f ),
+        glm::vec3( 0.25f, 1.0f, 0.25f ),
+        glm::vec3( 0.25f, 0.25f, 1.0f ),
+        glm::vec3( 1.0f, 0.25f, 0.25f ),
+        glm::vec3( 1.0f, 1.0f, 0.25f ),
+        glm::vec3( 0.25f, 1.0f, 1.0f ),
+        glm::vec3( 1.0f, 0.25f, 1.0f ),
     };
     uint32_t const numLights = 10;
     for (uint32_t i = 0; i < numLights; i++)
     {
-        std::shared_ptr<Light> light( new Light( colors[rand() % numColors] ) );
+        std::shared_ptr<Light> light( new Light( colors[rand() % numColors] * lightPower ) );
         gGameState->mObjects.push_back( light );
         gGameState->mLights.push_back( light );
     }
