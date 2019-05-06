@@ -349,7 +349,8 @@ void Render( std::vector<std::shared_ptr<Object>>& objects, GLFWwindow* const wi
 {
     //glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    glEnable( GL_DEPTH_TEST );
 
     // place camera back 2 units from 0,0,0 along z-axis, we are using OpenGL's
     // default coordinate system where -z is into the screen
