@@ -126,10 +126,10 @@ struct Mesh
 
 struct Object
 {
-    Object( const std::shared_ptr<Mesh>& mesh, const glm::mat4& transform ):
+    Object( const std::shared_ptr<Mesh>& mesh, const glm::vec3& position ):
         mMesh( mesh ),
-        mTransform( transform ),
-		mRot( 0.0f )
+        mPos( position ),
+        mRot( 0.0f )
     {
     }
     
@@ -139,7 +139,8 @@ struct Object
         float const rotationsPerSecond = 0.5f;
         mRot += ((360.0f * rotationsPerSecond) * deltaTime);
         mRot = fmodf( mRot, 360.0f );
-        mTransform = glm::rotate( glm::mat4( 1.0f ), glm::radians( mRot ), glm::vec3( 0.0f, 0.0f, 1.0f ) );
+        mTransform = glm::translate( glm::mat4( 1.0f ), mPos );
+        mTransform = glm::rotate( mTransform, glm::radians( mRot ), glm::vec3( 0.0f, 0.0f, 1.0f ) );
     }
 
     virtual void Render( const glm::mat4& view, const glm::mat4& projection )
@@ -152,6 +153,7 @@ struct Object
 
     std::shared_ptr<Mesh> mMesh;
     glm::mat4 mTransform;
+    glm::vec3 mPos;
     float mRot;
 };
 
@@ -384,33 +386,33 @@ void Render( std::vector<std::shared_ptr<Object>>& objects, GLFWwindow* const wi
 int main()
 {
     // initialize OpenGL (3.3 Core Profile)
-    /*GLFWwindow* const window = InitGL();
+    GLFWwindow* const window = InitGL();
     if (window == nullptr)
     {
         return -1;
-    }*/
+    }
 
     // create shader program
-    /*std::shared_ptr<ShaderProgram> shaderProgram = BuildShaderProgram();
+    std::shared_ptr<ShaderProgram> shaderProgram = BuildShaderProgram();
     if (shaderProgram == nullptr)
     {
         return -1;
-    }*/
+    }
 
     // create prop mesh (Triangle)
-    /*std::shared_ptr<Mesh> mesh = BuildPropMesh( shaderProgram );
+    std::shared_ptr<Mesh> mesh = BuildPropMesh( shaderProgram );
     if (mesh == nullptr)
     {
         return -1;
-    }*/
+    }
 
     // create prop object
     std::vector<std::shared_ptr<Object>> objects;
-    //objects.push_back( std::shared_ptr<Object>( new Object( mesh, glm::mat4(1.0f) ) ) );
+    objects.push_back( std::shared_ptr<Object>( new Object( mesh, glm::vec3( 0.0f, 0.0f, 0.0f ) ) ) );
 
     // game loop
     // -----------
-    /*double t0 = glfwGetTime();
+    double t0 = glfwGetTime();
     while (!glfwWindowShouldClose(window))
     {
         // update
@@ -420,11 +422,11 @@ int main()
 
         // render objects (View Frustum Culling, Occlusion Culling, Draw Order Sorting, etc)
         Render(objects, window);
-    }*/
+    }
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
-    //glfwTerminate();
+    glfwTerminate();
     return 0;
 }
 
