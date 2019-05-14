@@ -7,7 +7,7 @@
 //====================================================
 
 // Uncomment this to use vertex lighting
-#define VERTEX_LIGHTING
+//#define VERTEX_LIGHTING
 
 //====================================================
 
@@ -39,7 +39,7 @@ out vec3 fromVtxSpecularColor;
 
 //====================================================
 
-void handlePointLight( in out vec3 diffuseColor, in out vec3 specularColor, vec3 vertPos, vec3 vertNormal, vec3 lightPos, vec3 lightColor, float lightRadius )
+void handlePointLight( inout vec3 diffuseColor, inout vec3 specularColor, vec3 vertPos, vec3 vertNormal, vec3 lightPos, vec3 lightColor, float lightRadius )
 {
     vec3 lightDir = lightPos - vertPos;
     float distance = length(lightDir);
